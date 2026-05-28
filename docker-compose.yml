@@ -1,0 +1,53 @@
+services:
+  api:
+    build: .
+    env_file: .env.example
+    environment:
+      DATABASE_URL: postgresql+psycopg://phishwatch:phishwatch@postgres:5432/phishwatch
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    command: uvicorn phishwatch.app.main:app --host 0.0.0.0 --port 8000
+  worker:
+    build: .
+    env_file: .env.example
+    environment:
+      DATABASE_URL: postgresql+psycopg://phishwatch:phishwatch@postgres:5432/phishwatch
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: celery -A phishwatch.app.workers.celery_app.celery_app worker --loglevel=INFO
+  scheduler:
+    build: .
+    env_file: .env.example
+    environment:
+      DATABASE_URL: postgresql+psycopg://phishwatch:phishwatch@postgres:5432/phishwatch
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+    command: celery -A phishwatch.app.workers.celery_app.celery_app beat --loglevel=INFO
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: phishwatch
+      POSTGRES_USER: phishwatch
+      POSTGRES_PASSWORD: phishwatch
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phishwatch -d phishwatch"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+volumes:
+  postgres_data:
